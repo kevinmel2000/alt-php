@@ -18,6 +18,19 @@ class Alt {
     );
     public static $output           = self::OUTPUT_JSON;
 
+    // request method
+    const GET                       = 'get';
+    const POST                      = 'post';
+    const PUT                       = 'put';
+    const DELETE                    = 'delete';
+    public static $method           = self::GET;
+    public static $methods          = array(
+        'GET'                       => self::GET,
+        'POST'                      => self::POST,
+        'PUT'                       => self::PUT,
+        'DELETE'                    => self::DELETE,
+    );
+
     // response status
     const STATUS_OK                 = '200';
     const STATUS_UNAUTHORIZED       = '401';
@@ -29,6 +42,9 @@ class Alt {
         self::STATUS_NOTFOUND       => 'NOTFOUND',
         self::STATUS_ERROR          => 'ERROR',
     );
+
+    // routes
+    public static $routes           = array();
 
     // profiler
     public static $timestart        = 0;
@@ -59,8 +75,19 @@ class Alt {
                 $total = (int)$_SERVER['argc'];
                 if($total > 1) for($i=1; $i<$total; $i++){
                     list($key, $value) = explode('=', trim($_SERVER['argv'][$i]));
+
+                    switch($key){
+                        case '--uri':
+                            $_SERVER['REQUEST_URI'] = strtolower($value);
+                            break;
+                        case '--method':
+                            $_SERVER['REQUEST_METHOD'] = strtoupper($value);
+                            break;
+                        default:
+                            break;
+                    }
                     if($key == '--uri'){
-                        $_SERVER['REQUEST_URI'] = strtolower($value);
+
                     }else{
                         $_REQUEST[$key] = $value;
                     }
@@ -72,6 +99,11 @@ class Alt {
                 break;
         }
 
+        // set request method
+        $_SERVER['REQUEST_METHOD'] = isset(self::$methods[$_REQUEST['method']]) ? $_REQUEST['method'] : $_SERVER['REQUEST_METHOD'];
+        self::$method = isset(self::$methods[$_SERVER['REQUEST_METHOD']]) ?: self::GET;
+
+        // get routing and output type
         $uri = substr($_SERVER['REQUEST_URI'], strlen($baseurl)) ?: "";
         list($route) = explode('?', $uri);
         list($routing, $ext) = explode(".", $route);
@@ -80,36 +112,79 @@ class Alt {
 
         if(isset(self::$outputs[$ext])) self::$output = $ext;
 
+        // check if response code need to surpress to OK
         if(!$_REQUEST['issurpress']) header(' ', true, $_REQUEST['s']);
+
+        // set response header
         header('Access-Control-Allow-Origin: *');
         header('Access-Control-Allow-Methods: *');
         header('Access-Control-Allow-Headers: *');
 
         try{
-            $controller = ALT_PATH . 'route' . DIRECTORY_SEPARATOR . $routing . '.php';
-            if(!is_file($controller)) throw new Alt_Exception("Request not found", self::STATUS_NOTFOUND);
+            // try find in available routes first
+            $object = null;
+            foreach(self::$routes as $route => $config){
+                $tmp = explode(DIRECTORY_SEPARATOR, $routing);
+                if($tmp[0] == $route){
+                    // check permission
+                    if($config['permission'] != null) Alt_Security::check($config['permission']);
 
-            ob_start();
-            $res = (include_once $controller);
-
-            header('Content-type: ' . self::$outputs[self::$output] . self::$output);
-            switch(self::$output){
-                case self::OUTPUT_HTML:
-                    $res = ob_get_contents() ?: $res;
-                    ob_end_clean();
-
-                    self::response(array(
-                        's' => self::STATUS_OK,
-                        'd' => $res,
-                    ));
+                    $object = new $config['classname'];
+                    if(isset($tmp[1])) $_REQUEST[$object->pkey] = $tmp[1];
                     break;
-                default:
-                    ob_end_clean();
-                    self::response(array(
-                        's' => self::STATUS_OK,
-                        'd' => $res,
-                    ));
-                    break;
+                }
+            }
+
+            if(!is_null($object)){
+                $res = null;
+                switch(self::$method){
+                    case self::GET:
+                        $res = $object->get($_REQUEST);
+                        break;
+                    case self::PUT:
+                        $res = $object->insert($_REQUEST, $_FILES);
+                        break;
+                    case self::POST:
+                        $res = $object->update($_REQUEST, $_FILES);
+                        break;
+                    case self::DELETE:
+                        $res = $object->remove($_REQUEST);
+                        break;
+                    default:
+                        throw new Alt_Exception("Request method not defined", self::STATUS_ERROR);
+                        break;
+                }
+                self::response(array(
+                    's' => self::STATUS_OK,
+                    'd' => $res,
+                ));
+            }else{
+                // if no available routes defined, try get file in route folder
+                $controller = ALT_PATH . 'route' . DIRECTORY_SEPARATOR . $routing . '.php';
+                if(!is_file($controller)) throw new Alt_Exception("Request not found", self::STATUS_NOTFOUND);
+
+                ob_start();
+                $res = (include_once $controller);
+
+                header('Content-type: ' . self::$outputs[self::$output] . self::$output);
+                switch(self::$output){
+                    case self::OUTPUT_HTML:
+                        $res = ob_get_contents() ?: $res;
+                        ob_end_clean();
+
+                        self::response(array(
+                            's' => self::STATUS_OK,
+                            'd' => $res,
+                        ));
+                        break;
+                    default:
+                        ob_end_clean();
+                        self::response(array(
+                            's' => self::STATUS_OK,
+                            'd' => $res,
+                        ));
+                        break;
+                }
             }
         }catch(Alt_Exception $e){
             self::response(array(
@@ -136,6 +211,13 @@ class Alt {
             'u' => memory_get_peak_usage(true) / 1000,
         ));
         if($isdie) die;
+    }
+
+    public static function route($route, $function, $permission = null){
+        self::$routes[$route] = array(
+            'classname'     => $function,
+            'permission'    => $permission,
+        );
     }
 
     public static function autoload($class){

@@ -4,7 +4,8 @@ $data = array();
 /*$db = Alt_Db::instance();
 $data = $db->query('select * from master_unit');
 */
-$data = Bms_Master_Unit::get();
+//$data = Minerva_Master_Unit::get();
+$data = Minerva_Master_Unit::instance()->db->query('select * from master_unit');
 return $data;
 /*
 switch(Alt::$output){

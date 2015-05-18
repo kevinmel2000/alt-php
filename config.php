@@ -13,7 +13,7 @@ return array (
                 'username'   => 'root',
                 'password'   => '',
                 'persistent' => FALSE,
-                'database'   => 'bmsv2',
+                'database'   => 'minerva',
             )
         ),
     ),

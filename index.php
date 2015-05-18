@@ -4,6 +4,9 @@ error_reporting(E_ALL ^ E_NOTICE);
 
 require ALT_PATH . 'engine' . DIRECTORY_SEPARATOR . 'Alt.php';
 spl_autoload_register(array('Alt', 'autoload'));
+
+Alt::route('unit', 'Minerva_Master_Unit');
+
 Alt::start(array(
     'environment' => Alt::ENV_DEVELOPMENT,
 ));
