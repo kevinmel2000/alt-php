@@ -124,7 +124,6 @@ class Alt {
 
         try{
             // try find in available routes first
-
             $object = null;
             $tmp = explode("?", $routing);
             $tmp = explode(DIRECTORY_SEPARATOR, $tmp[0]);
@@ -137,6 +136,9 @@ class Alt {
                             $_REQUEST[$object->pkey] = $tmp[1];
                         }else{
                             self::$method = $tmp[1];
+
+                            if(isset($config['method']) && !in_array(self::$method, $config['method']))
+                                throw new Alt_Exception("Request method not defined", self::STATUS_ERROR);
                         }
 
                     }
@@ -212,10 +214,10 @@ class Alt {
         if($isdie) die;
     }
 
-    public static function route($route, $function, $permission = null){
+    public static function route($route, $function, $method = null){
         self::$routes[$route] = array(
             'classname'     => $function,
-            'permission'    => $permission,
+            'method'        => $method,
         );
     }
 
