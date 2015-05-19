@@ -132,7 +132,13 @@ class Alt {
             foreach(self::$routes as $route => $config){
                 if($tmp[0] == $route){
                     // check permission
-                    if($config['permission'] != null) Alt_Security::check($config['permission']);
+                    if($config['permission'] !== null){
+                        if(gettype($config['permission']) == "array" && $config['permission'][self::$method] !== null){
+                            Alt_Security::set_permission($config['permission'][self::$method]);
+                        }else if(gettype($config['permission']) == "string" || gettype($config['permission']) == "number"){
+                            Alt_Security::set_permission($config['permission']);
+                        }
+                    }
 
                     $object = new $config['classname'];
                     if(isset($tmp[1])) $_REQUEST[$object->pkey] = $tmp[1];
@@ -194,14 +200,16 @@ class Alt {
                 }
             }
         }catch(Alt_Exception $e){
+            header('Content-type: ' . self::$outputs[self::$output] . self::$output);
             self::response(array(
                 's' => $e->getCode(),
                 'm' => $e->getMessage(),
             ));
         }catch(Exception $e){
+            header('Content-type: ' . self::$outputs[self::$output] . self::$output);
             self::response(array(
                 's' => self::STATUS_ERROR,
-                'm' => $e->getCode() . " : " . $e->getMessage(),
+                'm' => self::$environment == Alt::ENV_DEVELOPMENT ? $e->getCode() . " : " . $e->getMessage() : self::$status[self::STATUS_ERROR],
             ));
         }
     }
@@ -289,5 +297,27 @@ class Alt {
                 break;
         }
         return $str;
+    }
+
+    public static function generate_token($data){
+        if(isset($data) && $data){
+            $session = self::$config['session'];
+            $data->exp = time() + $session['native']['lifetime'];
+            $data->sessionid = md5(microtime());
+
+            return Alt_Jwt::encode($data, self::$config['app_name']);
+        }else{
+            return '';
+        }
+    }
+
+    public static function get_user_data($token = ''){
+        try{
+            $token = $token ?: $_REQUEST['token'];
+            $userdata = Alt_Jwt::decode($token, self::$config['app_name']);
+            return $userdata;
+        }catch (Exception $e){
+            return new stdClass();
+        }
     }
 }
