@@ -26,15 +26,12 @@ class Minerva_Master_Unit extends Alt_Dbo {
             "modifieduser"          => "",
             "deletedtime"           => 0,
             "deleteduser"           => "",
-            "isdeleted"             => 0
+            "isdeleted"             => 0,
         );
 
-        /*$this->view_name            = "view_master_unit";
+        $this->view_name            = "view_master_unit";
         $this->view_fields          = array_merge($this->table_fields, array(
-            "unitid"                => "",
-            "code"                  => "",
-            "name"                  => "",
-            "netsize"               => "",
-        ));*/
+            "abc"                   => "",
+        ));
     }
 }

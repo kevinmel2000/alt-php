@@ -1,7 +1,6 @@
 <?php
 
 class Minerva {
-
     public static function registry(){
         $rc = new ReflectionClass(get_class());
 
@@ -9,6 +8,6 @@ class Minerva {
 
         );
 
-        return array_merge($registry, $rc->getConstants());
+        return array_merge($registry, $rc->getConstants(), $rc->getStaticProperties());
     }
 }

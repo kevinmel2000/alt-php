@@ -1,15 +1,14 @@
 <?php defined('ALT_PATH') or die('No direct script access.');
 
 class Alt_Security {
-
-
     public static function set_permission($permission){
         if ($permission !== null){
             $userdata = self::get_user_data();
             $level = $userdata->userlevel;
             if ($level == null)
-                throw new Alt_Exception('Anda belum login atau session anda sudah habis!', 401);
-
+                throw new Alt_Exception('Anda belum login atau session anda sudah habis!', Alt::STATUS_UNAUTHORIZED);
+            if (!self::check($permission))
+                throw new Alt_Exception('Anda tidak berhak mengakses!', Alt::STATUS_FORBIDDEN);
         }
     }
 

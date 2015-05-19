@@ -1,57 +1,39 @@
 <?php defined('ALT_PATH') or die('No direct script access.');
 
 class Alt_Dbo {
-    // table alias on select
-    protected $alias;
-    // auto-increment on primary key
-    protected $autoinc = true;
     // database instance for this class
-    protected $db;
+    public $db;
     // database instance to use
     public $db_instance;
-    // dynamic column name
-    protected $dyncolumn = null;
-    // dynamic columns data
-    protected $dynfields = array();
-    // table fields
-    protected $table_fields = array();
+    // autoincrement flag
+    public $autoinc = true;
     // primary key for the table
     public $pkey;
     // table name in database
     protected $table_name;
-    // where clauses
-    protected $wheres = array();
-    // group by clauses
-    protected $groups = array();
-    // order clauses
-    protected $orders = array();
-    // limit clauses
-    protected $limit;
-    // offset clauses
-    protected $offset;
-    // this class belongs to what class
-    protected $belongs_to = array();
-    // this class has many to
-    protected $has_manys = array();
-    // joined entity on select
-    protected $joins = array();
-    // return type for query, default is object (object / array)
-    public $rtype = "object";
-    // field update marker
-    protected $mark_update = array();
-    // dynfield update marker
-    protected $mark_updatedyn = array();
-    // select marker, for specific select
-    protected $select_fields = array();
+    // table fields
+    protected $table_fields = array();
+    // table dynamic column name
+    protected $table_dyncolumn;
+    // table dynamic fields data
+    protected $table_dynfields = array();
+    // view name in database
+    protected $view_name;
+    // view fields
+    protected $view_fields = array();
+    // view dynamic column name
+    protected $view_dyncolumn;
+    // view dynamic fields data
+    protected $view_dynfields = array();
 
     /**
      * Constructing class
      * @return void
      */
     public function __construct() {
-        $this->table_name = get_class($this);
-        $this->pkey = $this->table_name ."id";
-        $this->db = Alt_Db::instance($this->db_instance);
+        $this->table_name   = $this->table_name ?: get_class($this);
+        $this->pkey         = $this->pkey ?: $this->table_name ."id";
+        $this->db           = $this->db ?: Alt_Db::instance($this->db_instance);
     }
 
     /**
@@ -73,318 +55,42 @@ class Alt_Dbo {
     }
 
     /**
-     * Define getter for table table_fields
-     * @return mixed table field value
+     * Creating column_create query dynamic column
+     * @param $field
+     * @param $value
+     * @return array
      */
-    public function __get($key) {
-        if (array_key_exists($key,$this->table_fields)) {
-            return $this->table_fields[$key];
-        }
-        else if ($this->dyncolumn != null && array_key_exists($key,$this->dynfields)) {
-            return $this->dynfields[$key];
-        }
-
-        return null;
-    }
-
-    /**
-     * Define setter for table table_fields
-     * @return void
-     */
-    public function __set($key,$value) {
-        if (array_key_exists($key,$this->table_fields)) {
-            // check marker, is it exists
-            if (!is_array($this->mark_update))
-                $this->mark_update = array_fill_keys($this->table_fields,0);
-            $this->table_fields[$key] = $value;
-            $this->mark_update[$key] = 1;
-        }
-        else {
-            // add/update dynamic columns
-            $this->dynfields[$key] = $value;
-            $this->mark_updatedyn[$key] = 1;
-        }
-    }
-
-    /**
-     * count designated row
-     * @return int num of row
-     */
-    public function count() {
-        // sql query
-        $sql = "select count(*) as numofrow from $this->table_name" . $this->get_where();
-        $res = $this->db->query($sql);
-        if (!empty($res))
-            return $res[0]->numofrow;
-        else
-            return 0;
-    }
-
-    public function column_create($field, $value, $type = 'COLUMN_CREATE'){
-        $field = $this->db->quote($field);
+    public function column_create($field, $value){
+        $field = $this->quote($field);
 
         switch(gettype($value)){
             case "array":
             case "object":
                 $dyncol = array();
                 foreach($value as $key => $val){
-                    list($key, $val) = $this->column_create($key, $val, $type);
+                    list($key, $val) = $this->column_create($key, $val);
                     $dyncol[] = $key;
                     $dyncol[] = $val;
                 }
-                $value = count($dyncol) > 0 ? $type . "(".implode(",",$dyncol).")" : "''";
+                $value = count($dyncol) > 0 ? "COLUMN_CREATE (".implode(",",$dyncol).")" : "''";
                 break;
             default:
-                $value = $this->db->quote($value);
+                $value = $this->quote($value);
                 break;
         }
         return array($field, $value);
     }
 
     /**
-     * insert into database
-     * @param usedefault bool set true if you want to use default value for empty table_fields set by DBO
-     * @return int inserted row
+     * Creating column_get query for dynamic column
+     * @param $column
+     * @param array $array
+     * @return string
      */
-    public function insert($usedefault = false, $issql = false) {
-        // constructing sql
-        $sql = "insert into $this->table_name (";
-        // imploding field names
-        $insfield = $this->table_fields;
-        if ($this->pkey != "" && $this->autoinc)
-            unset($insfield[$this->pkey]);
-        // set field values
-        $fnames = array();
-        $values = array();
-        foreach ($insfield as $field => $value) {
-            if (($value == null && $usedefault) || $value != null) {
-                $fnames[] = $field;
-                $values[] = $this->db->quote($value);
-            }
-        }
-        // dynamic columns
-        if ($this->dyncolumn != null && count($this->dynfields) > 0) {
-            $fnames[] = $this->dyncolumn;
-            $dyncol = array();
-            foreach ($this->dynfields as $field => $value) {
-                list($field, $value) = $this->column_create($field, $value, 'COLUMN_CREATE');
-                $dyncol[] = $field;
-                $dyncol[] = $value;
-            }
-            $values[] = "COLUMN_CREATE(".implode(",",$dyncol).")";
-        }
-        // forge sql
-        $sql .= implode(",",$fnames) .") values (". implode(",",$values) .")";
-
-        // execute or return query
-        //print_r($sql);die;
-        if($issql){
-            return $sql;
-        }else{
-            $res = $this->db->query($sql);
-            return $res;
-        }
-    }
-
-    /**
-     * update the data
-     * @return int affected row
-     */
-    public function update($use_where = false, $issql = false) {
-        // constructing sql
-        $sql = "update $this->table_name set ";
-        // imploding field names
-        $updfield = $this->table_fields;
-        unset($updfield[$this->pkey]);
-        // set field values
-        $fields = array();
-        foreach ($updfield as $field => $value) {
-            //if ($value != null)
-            if ($this->mark_update[$field])
-                $fields[] = $field." = ".$this->db->quote($value);
-        }
-        // dynamic columns
-        if ($this->dyncolumn != null && count($this->dynfields) > 0) {
-            $dyncol = array();
-            foreach ($this->dynfields as $field => $value) {
-                if($this->mark_updatedyn[$field]) {
-                    list($field, $value) = $this->column_create($field, $value, 'COLUMN_CREATE');
-                    $dyncol[] = $field;
-                    $dyncol[] = $value;
-                }
-            }
-            if (count($dyncol) > 0)
-                $fields[] = "$this->dyncolumn = COLUMN_CREATE(".implode(",",$dyncol).")";
-        }
-        // forge sql
-        $sql .= implode(",",$fields) . ($use_where? $this->get_where() : " where $this->pkey = '". $this->table_fields[$this->pkey] ."'");
-
-        // execute or return query
-        if($issql){
-            return $sql;
-        }else{
-            $res = $this->db->query($sql);
-            return $res;
-        }
-
-    }
-
-    /**
-     * update the data - non primary key based
-     * @return int affected row
-     */
-    public function update_multi() {
-        return $this->update(true);
-    }
-
-    /**
-     * delete the data
-     * @return int num of deleted data
-     */
-    public function delete($use_where = false) {
-        if ($this->table_fields[$this->pkey] == "") {
-            // no primary key set
-            // we just use the wheres that set, but, if wheres not set, prevent it from deleting entire table
-            if (empty($this->wheres)) return -1;
-        }
-        else {
-            // delete just those key
-            if (!$use_where) $this->where($this->pkey ." = '".$this->table_fields[$this->pkey]."'");
-        }
-
-        $res = $this->db->query("delete from $this->table_name ".$this->get_where());
-        return $res;
-    }
-
-    /**
-     * delete multiple data
-     * @return int num of deleted data
-     */
-    public function delete_multi() {
-        return $this->delete(true);
-    }
-
-
-    /**
-     * Gets all data from database
-     * @return array of data
-     */
-    public function get($rtype = "object") {
-        // returning data
-        $data = $this->db->query($this->get_sql(),$rtype);
-        if($this->dyncolumn) {
-            for ($i = 0; $i < count($data); $i++) {
-                unset($data[$i]->{$this->dyncolumn});
-                foreach ($data[$i] as $key => $value) {
-                    $decoded = json_decode($value);
-                    $data[$i]->$key = $decoded !== NULL && (gettype($decoded) == 'array' || gettype($decoded) == 'object') ? json_decode($value) : $value;
-                }
-            }
-        }
-        return $data;
-    }
-
-    /**
-     * retrieve data by id, or by where clause - limited 1
-     * @return int retrived row data
-     */
-    public function retrieve($use_where = false) {
-        // set clause
-        if (!$use_where)
-            $this->where("$this->pkey = '".$this->table_fields[$this->pkey]."'");
-        // else, just use the where, make sure only retrieve one row
-        else
-            $this->limit(1);
-        // query data
-        $result = $this->db->query($this->get_sql(),"array");
-
-        // check the result
-        if (count($result) > 0) {
-            foreach ($result[0] as $key => $value) {
-                if (array_key_exists($key,$this->table_fields))
-                    $this->table_fields[$key] = $value;
-                else if ($this->dyncolumn != null)
-                    $this->dynfields[$key] = json_decode($value) !== null ? json_decode($value) : $value;
-            }
-            return $result;
-        }
-        else {
-            return 0;
-        }
-    }
-
-    /**
-     * Get the sql for querying database, usually to supply dbgridview
-     * @return  string SQL Query
-     */
-    public function get_sql() {
-        $fields = array_keys($this->table_fields);
-        foreach($this->dynfields as $field => $defaultvalue){
-            $fields[] = $this->field($field . (gettype($defaultvalue) == "string" ? "" : ".*")) . " as " . $field;
-        }
-        $fields = implode(",", $fields);
-
-        $selects = count($this->select_fields) > 0? implode(",",array_keys($this->select_fields)) : $fields;
-        // returning sql
-        return "SELECT ".$selects." FROM ".$this->table_name. $this->get_where().$this->get_group().$this->get_order().$this->get_limit();
-    }
-
-    /**
-     * get the where clause
-     * @return string SQL where clause
-     */
-    protected function get_where() {
-        // constructing where clause
-        $first = true;
-        $where = "";
-        if (count($this->wheres) > 0) {
-            $where = " WHERE ";
-            foreach ($this->wheres as $w) {
-                $where .= ($first? "" : " AND ").$w;
-                $first = false;
-            }
-        }
-        return $where;
-    }
-
-
-    /**
-     * get the group clause
-     * @return string SQL group clause
-     */
-    protected function get_group() {
-        if (!empty($this->groups)) {
-            return " GROUP BY ".implode(",",$this->groups);
-        }
-        return "";
-    }
-
-    /**
-     * get the order clause
-     * @return string SQL order clause
-     */
-    protected function get_order() {
-        if (!empty($this->orders)) {
-            return " ORDER BY ".implode(",",$this->orders);
-        }
-        return "";
-    }
-
-    /**
-     * get the limit clause
-     * @return string SQL limit clause
-     */
-    protected function get_limit() {
-        if ($this->limit != "") {
-            return " LIMIT $this->limit OFFSET $this->offset";
-        }
-        return "";
-    }
-
     public function column_get($column, $array = array()){
         $str = "COLUMN_GET(";
         if(count($array) == 0) {
-            $str .= $this->dyncolumn . ", " . $this->quote($column) . ' AS CHAR';
+            $str .= $this->get_dyncolumn() . ", " . $this->quote($column) . ' AS CHAR';
         }else{
             $str .= $this->column_get($column, array_slice($array, 0, count($array)-1)) . ", " . $this->quote($array[count($array)-1]) . ' AS CHAR';
         }
@@ -392,10 +98,19 @@ class Alt_Dbo {
         return $str;
     }
 
+    /**
+     * Support dynamic field selection using dot
+     * @param $field
+     * @return string
+     */
     public function field($field){
         $column = explode(".", $field);
         $str = "";
-        if($this->dyncolumn != "" && array_key_exists($column[0], $this->dynfields)){
+
+        $dyncolumn = $this->get_dyncolumn();
+        $dynfields = $this->get_dynfields();
+
+        if($dyncolumn != null && array_key_exists($column[0], $dynfields)){
             $tmpcolumn = count($column) == 0 ? array() : array_slice($column, 1);
             $isall = $tmpcolumn[count($tmpcolumn)-1] == '*';
             $tmpcolumn = $isall ? array_slice($tmpcolumn, 0, count($tmpcolumn)-1) : $tmpcolumn;
@@ -409,118 +124,314 @@ class Alt_Dbo {
     }
 
     /**
-     * set specific select table_fields
-     * @return Alt_Dbo
+     * Support dynamic field selection using dot in any string, e.g. select field(x.y)
+     * @param $field
+     * @return mixed
      */
-    public function select() {
-        $params = func_get_args();
-        if (count($params) > 0) {
-            $fields = array();
-            foreach ($params as $col) {
-                $col = trim($col);
-                if (array_key_exists($col,$this->table_fields)) {
-                    $fields[] = $col;
-                }
-                else if ($this->dyncolumn != "") {
-                    // dynamic column enabled
-                    $select = explode(" ", $col);
-                    $f = $select[0];
-                    $as = count($select) > 1 ? " " . implode(" ", array_slice($select, 1)) : "";
-                    $fields[] = $this->field($f) . $as;
-                }else{
-                    $fields[] = $col;
+    public function fieldstring($field){
+        if($this->get_dyncolumn()){
+            $regex = '/field\(([a-zA-z.\*]*)\)/i';
+            preg_match_all($regex, $field, $match, PREG_PATTERN_ORDER);
+            if(count($match) > 0) foreach($match[1] as $i => $item){
+                $field = str_replace($match[0][$i], $this->field($item), $field);
+            }
+        }
+
+        return $field;
+    }
+
+    /**
+     * Support array filter, reformat to ".", e.g. post data from client x[y] will be formatted to x.y;
+     * @param $key
+     * @param $value
+     * @param string $prev
+     * @return array
+     */
+    public function filter($key, $value, $prev = ""){
+        $res = array();
+        if(is_array($value)) {
+            foreach($value as $k => $v){
+                $res = array_merge($res, $this->filter($k, $v, ($prev != "" ? $prev . "." : "") . $key));
+            }
+        }else{
+            $res[($prev != "" ? $prev . "." : "") . $key] = $value;
+        }
+        return $res;
+    }
+
+    /**
+     * Get tablename
+     * @param bool $returnview
+     */
+    public function get_tablename($returnview = true){
+        return $returnview && isset($this->view_name) ? $this->view_name : $this->table_name;
+    }
+
+    /**
+     * Get table field
+     * @param bool $returnview
+     * @return array
+     */
+    public function get_fields($returnview = true){
+        return $returnview && isset($this->view_fields) ? $this->view_fields : $this->table_fields;
+    }
+
+    /**
+     * Get dynamic column name
+     * @param bool $returnview
+     * @return mixed
+     */
+    public function get_dyncolumn($returnview = true){
+        return $returnview && isset($this->view_dyncolumn) ? $this->view_dyncolumn : $this->table_dyncolumn;
+    }
+
+    /**
+     * Get dynamic fields
+     * @param bool $returnview
+     * @return mixed
+     */
+    public function get_dynfields($returnview = true){
+        return $returnview && isset($this->view_dynfields) ? $this->view_dynfields : $this->table_dynfields;
+    }
+
+    /**
+     * Get the where clause
+     * @return string SQL group clause
+     */
+    public function get_select($data = array()){
+        $select = array();
+
+        if($data['select'] != null && $data['select'] != ''){
+            $data['select'] = $this->fieldstring($data['select']);
+            $select[] = $data['select'];
+        }
+
+        return count($select) > 0 ? implode(", ", $select) : "*";
+    }
+
+    /**
+     * Get the where clause
+     * @return string SQL group clause
+     */
+    public function get_where($data = array()){
+        $where = array();
+
+        if($data['where'] != null && $data['where'] != ''){
+            $data['where'] = $this->field($data['where']);
+            $where[] = $data['where'];
+        }
+
+        foreach($data as $key => $value){
+            if($this->table_fields[$key] !== null && $value != ''){
+                $where[] = $this->field($key) . " like " . $this->quote("%" . $value . "%");
+            }else if($this->table_dynfields[$key] !== null && $value != ''){
+                $tmp = $this->filter($key, $value);
+                foreach($tmp as $k=>$v) {
+                    $where[] = $this->field($k) . " like " . $this->quote("%" . $v . "%");
                 }
             }
-            if (count($fields) > 0)
-                $this->select_fields = array_flip($fields);
         }
-        return $this;
+
+        if($this->table_fields['isdeleted'] !== null && $this->view_fields['isdeleted'] !== null && ($data['isdeleted'] == null || $data['isdeleted'] == '')){
+            $where[] = 'isdeleted = 0';
+        }
+
+        return count($where) > 0 ? " where " . implode(" and ", $where) : "";
     }
 
     /**
-     * Add where clause
-     * @param string a where clause
-     * @return Alt_Dbo
+     * Get the group clause
+     * @return string SQL group clause
      */
-    public function where($where) {
-        $this->wheres[] = $where;
-        return $this;
+    public function get_group($data = array()) {
+        if($data['group'] != null && $data['group'] != ''){
+            return " GROUP BY " . $data['group'];
+        }
+        return "";
     }
 
     /**
-     * Add group clause
-     * @param string a group clause
-     * @return Alt_Dbo
+     * Get the order clause
+     * @return string SQL order clause
      */
-    public function group_by($group) {
-        $this->groups[] = $group;
-        return $this;
+    public function get_order($data = array()) {
+        if($data['order'] != null && $data['order'] != ''){
+            return " ORDER BY " . $data['order'];
+        }
+        return "";
     }
 
     /**
-     * Add order clause
-     * @param string an order clause
-     * @return Alt_Dbo
+     * Get the limit clause
+     * @return string SQL limit clause
      */
-    public function order_by($order,$sort = "ASC") {
-        $this->orders[] = $order." ".$sort;
-        return $this;
+    public function get_limit($data = array()) {
+        if($data['limit'] != null && $data['limit'] != ''){
+            return " LIMIT " . $data['limit'] . " OFFSET " . ($data['offset'] ?: 0);
+        }
+        return "";
     }
 
     /**
-     * set the limit
-     * @param limit int num of data to be obtained
-     * @param offset int offset from first row
-     * @return Alt_Dbo
+     * Get the join clause
+     * @return string SQL join clause
      */
-    public function limit($limit,$offset = 0) {
-        $this->limit = $limit;
-        $this->offset = $offset;
-        return $this;
+    public function get_join($data = array()) {
+        if($data['join'] != null && $data['join'] != ''){
+            return $data['join'];
+        }
+        return "";
     }
 
     /**
-     * set this class reference belong to another class
-     * @param string class name
-     * @param string foreign key to designated class
-     * @return void
+     * Quote value
+     * @param $string
+     * @return mixed
      */
-    protected function belong_to($classname,$fkeyname,$options = array()) {
-        if (!isset($this->belongs_to[$classname])) {
-            $this->belongs_to[$classname] = array("fkey" => $fkeyname,"options" => $options);
+    public function quote($string){
+        return $this->db->quote($string);
+    }
+
+    /**
+     * count designated row
+     * @param array $data
+     * @param boolean $returnsql, is returning sql
+     * @return int num of row
+     */
+    public function count($data = array(), $returnsql = false) {
+        // sql query
+        $sql = "select count(*) as numofrow from " . ($this->view_name ?: $this->table_name) . $this->get_where($data);
+        if($returnsql) return $sql;
+
+        $res = $this->db->query($sql);
+        return !empty($res) ? $res[0]->numofrow : 0;
+    }
+
+    /**
+     * insert into database
+     * @param usedefault bool set true if you want to use default value for empty table_fields set by DBO
+     * @return int inserted row
+     */
+    public function create($data, $returnsql = false) {
+        // constructing sql
+        $sql = "insert into " . $this->table_name . " (";
+
+        // imploding field names
+        if ($this->pkey != "" && $this->autoinc)
+            unset($data[$this->pkey]);
+
+        // set field values
+        $fields = $this->get_fields(false);
+        $fnames = array();
+        $values = array();
+        foreach ($data as $field => $value) if(isset($fields[$field])) {
+            $fnames[] = $field;
+            $values[] = $this->quote($value);
+        }
+
+        // dynamic columns
+        $dyncolumn = $this->get_dyncolumn(false);
+        $dynfields = $this->get_dynfields(false);
+        if ($dyncolumn != null && count($dynfields) > 0) {
+            $fnames[] = $dyncolumn;
+            $dyncol = array();
+            foreach ($dynfields as $field => $value) {
+                list($field, $value) = $this->column_create($field, $value, 'COLUMN_CREATE');
+                $dyncol[] = $field;
+                $dyncol[] = $value;
+            }
+            $values[] = "COLUMN_CREATE(".implode(",",$dyncol).")";
+        }
+        // forge sql
+        $sql .= implode(",",$fnames) .") values (". implode(",",$values) .")";
+        if($returnsql) return $sql;
+
+        // execute or return query
+        $res = $this->db->query($sql);
+        return $res;
+    }
+
+    /**
+     * Gets data from database
+     * @return array of data
+     */
+    public function retrieve($data = array(), $returnsql = false) {
+        $sql = "SELECT ".$this->get_select($data)." FROM ".$this->get_tablename() . $this->get_where($data).$this->get_group($data).$this->get_order($data).$this->get_join($data).$this->get_limit($data);
+        if($returnsql) return $sql;
+
+        // returning data
+        $data = $this->db->query($sql, "array");
+        if($this->table_dyncolumn) {
+            for ($i = 0; $i < count($data); $i++) {
+                unset($data[$i]->{$this->table_dyncolumn});
+                foreach ($data[$i] as $key => $value) {
+                    $decoded = json_decode($value);
+                    $data[$i]->$key = $decoded !== NULL && (gettype($decoded) == 'array' || gettype($decoded) == 'object') ? json_decode($value) : $value;
+                }
+            }
+        }
+        return $data;
+    }
+
+    /**
+     * update the data
+     * @return int affected row
+     */
+    public function update($data, $returnsql = false) {
+        // constructing sql
+        $sql = "update $this->table_name set ";
+
+        // imploding field names
+        $updfield = $this->table_fields;
+        unset($updfield[$this->pkey]);
+        // set field values
+        $fields = array();
+        foreach ($updfield as $field => $value) {
+            //if ($value != null)
+            if ($this->mark_update[$field])
+                $fields[] = $field." = ".$this->quote($value);
+        }
+        // dynamic columns
+        if ($this->table_dyncolumn != null && count($this->dynfields) > 0) {
+            $dyncol = array();
+            foreach ($this->dynfields as $field => $value) {
+                if($this->mark_updatedyn[$field]) {
+                    list($field, $value) = $this->column_create($field, $value, 'COLUMN_CREATE');
+                    $dyncol[] = $field;
+                    $dyncol[] = $value;
+                }
+            }
+            if (count($dyncol) > 0)
+                $fields[] = "$this->table_dyncolumn = COLUMN_CREATE(".implode(",",$dyncol).")";
+        }
+        // forge sql
+        $sql .= implode(",",$fields) . ($use_where? $this->get_where() : " where $this->pkey = '". $this->table_fields[$this->pkey] ."'");
+
+        // execute or return query
+        if($returnsql){
+            return $sql;
+        }else{
+            $res = $this->db->query($sql);
+            return $res;
         }
     }
 
     /**
-     * join to another entity
-     * @param string class name
-     * @return void
+     * delete the data
+     * @return int num of deleted data
      */
-    public function join($classname) {
-        if (!in_array($classname,$this->joins))
-            $this->joins[] = $classname;
-    }
+    public function delete($data) {
+        if ($this->table_fields[$this->pkey] == "") {
+            // no primary key set
+            // we just use the wheres that set, but, if wheres not set, prevent it from deleting entire table
+            if (empty($this->wheres)) return -1;
+        }
+        else {
+            // delete just those key
+            if (!$use_where) $this->where($this->pkey ." = '".$this->table_fields[$this->pkey]."'");
+        }
 
-    /**
-     * Reset all clause
-     * @return Alt_Dbo
-     */
-    public function reset() {
-        $this->wheres = array();
-        $this->groups = array();
-        $this->orders = array();
-        $this->select_fields = array();
-        $this->mark_update = array();
-        $this->limit = "";
-        $this->offset = "";
-        return $this;
-    }
-
-    /**
-     * @param  $input any inputed data
-     * @return string quoted sql string
-     */
-    public function quote($input) {
-        return $this->db->quote($input);
+        $res = $this->db->query("delete from $this->table_name ".$this->get_where());
+        return $res;
     }
 }

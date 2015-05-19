@@ -25,20 +25,22 @@ class Alt {
     const DELETE                    = 'delete';
     public static $method           = self::GET;
     public static $methods          = array(
-        'GET'                       => self::GET,
-        'POST'                      => self::POST,
-        'PUT'                       => self::PUT,
-        'DELETE'                    => self::DELETE,
+        self::GET                   => self::GET,
+        self::POST                  => self::POST,
+        self::PUT                   => self::PUT,
+        self::DELETE                => self::DELETE,
     );
 
     // response status
     const STATUS_OK                 = '200';
     const STATUS_UNAUTHORIZED       = '401';
+    const STATUS_FORBIDDEN          = '403';
     const STATUS_NOTFOUND           = '404';
     const STATUS_ERROR              = '500';
     public static $status           = array(
         self::STATUS_OK             => 'OK',
         self::STATUS_UNAUTHORIZED   => 'UNAUTHORIZED',
+        self::STATUS_FORBIDDEN      => 'FORBIDDEN',
         self::STATUS_NOTFOUND       => 'NOTFOUND',
         self::STATUS_ERROR          => 'ERROR',
     );
@@ -81,7 +83,7 @@ class Alt {
                             $_SERVER['REQUEST_URI'] = strtolower($value);
                             break;
                         case '--method':
-                            $_SERVER['REQUEST_METHOD'] = strtoupper($value);
+                            $_SERVER['REQUEST_METHOD'] = strtolower($value);
                             break;
                         default:
                             break;
@@ -100,8 +102,8 @@ class Alt {
         }
 
         // set request method
-        $_SERVER['REQUEST_METHOD'] = isset(self::$methods[$_REQUEST['method']]) ? $_REQUEST['method'] : $_SERVER['REQUEST_METHOD'];
-        self::$method = isset(self::$methods[$_SERVER['REQUEST_METHOD']]) ?: self::GET;
+        $_SERVER['REQUEST_METHOD'] = isset(self::$methods[strtolower($_REQUEST['method'])]) ? strtolower($_REQUEST['method']) : $_SERVER['REQUEST_METHOD'];
+        self::$method = isset(self::$methods[$_SERVER['REQUEST_METHOD']]) ? $_SERVER['REQUEST_METHOD'] : self::GET;
 
         // get routing and output type
         $uri = substr($_SERVER['REQUEST_URI'], strlen($baseurl)) ?: "";
@@ -122,9 +124,12 @@ class Alt {
 
         try{
             // try find in available routes first
+
             $object = null;
+            $tmp = explode("?", $routing);
+            $tmp = explode(DIRECTORY_SEPARATOR, $tmp[0]);
+
             foreach(self::$routes as $route => $config){
-                $tmp = explode(DIRECTORY_SEPARATOR, $routing);
                 if($tmp[0] == $route){
                     // check permission
                     if($config['permission'] != null) Alt_Security::check($config['permission']);
@@ -138,22 +143,24 @@ class Alt {
             if(!is_null($object)){
                 $res = null;
                 switch(self::$method){
-                    case self::GET:
-                        $res = $object->get($_REQUEST);
-                        break;
                     case self::PUT:
-                        $res = $object->insert($_REQUEST, $_FILES);
+                        $res = $object->create($_REQUEST);
+                        break;
+                    case self::GET:
+                        $res = $object->retrieve($_REQUEST);
                         break;
                     case self::POST:
-                        $res = $object->update($_REQUEST, $_FILES);
+                        $res = $object->update($_REQUEST);
                         break;
                     case self::DELETE:
-                        $res = $object->remove($_REQUEST);
+                        $res = $object->delete($_REQUEST);
                         break;
                     default:
                         throw new Alt_Exception("Request method not defined", self::STATUS_ERROR);
                         break;
                 }
+
+                header('Content-type: ' . self::$outputs[self::$output] . self::$output);
                 self::response(array(
                     's' => self::STATUS_OK,
                     'd' => $res,
