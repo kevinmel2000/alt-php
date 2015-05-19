@@ -25,10 +25,10 @@ class Alt {
     const DELETE                    = 'delete';
     public static $method           = self::GET;
     public static $methods          = array(
-        self::GET                   => self::GET,
-        self::POST                  => self::POST,
-        self::PUT                   => self::PUT,
-        self::DELETE                => self::DELETE,
+        self::PUT                   => 'create',
+        self::GET                   => 'retrieve',
+        self::POST                  => 'update',
+        self::DELETE                => 'delete',
     );
 
     // response status
@@ -103,7 +103,7 @@ class Alt {
 
         // set request method
         $_SERVER['REQUEST_METHOD'] = isset(self::$methods[strtolower($_REQUEST['method'])]) ? strtolower($_REQUEST['method']) : $_SERVER['REQUEST_METHOD'];
-        self::$method = isset(self::$methods[$_SERVER['REQUEST_METHOD']]) ? $_SERVER['REQUEST_METHOD'] : self::GET;
+        self::$method = self::$methods[isset(self::$methods[$_SERVER['REQUEST_METHOD']]) ? $_SERVER['REQUEST_METHOD'] : self::GET];
 
         // get routing and output type
         $uri = substr($_SERVER['REQUEST_URI'], strlen($baseurl)) ?: "";
@@ -131,40 +131,24 @@ class Alt {
 
             foreach(self::$routes as $route => $config){
                 if($tmp[0] == $route){
-                    // check permission
-                    if($config['permission'] !== null){
-                        if(gettype($config['permission']) == "array" && $config['permission'][self::$method] !== null){
-                            Alt_Security::set_permission($config['permission'][self::$method]);
-                        }else if(gettype($config['permission']) == "string" || gettype($config['permission']) == "number"){
-                            Alt_Security::set_permission($config['permission']);
-                        }
-                    }
-
                     $object = new $config['classname'];
-                    if(isset($tmp[1])) $_REQUEST[$object->pkey] = $tmp[1];
+                    if(isset($tmp[1])){
+                        if(intval($tmp[1]) > 0){
+                            $_REQUEST[$object->pkey] = $tmp[1];
+                        }else{
+                            self::$method = $tmp[1];
+                        }
+
+                    }
                     break;
                 }
             }
 
             if(!is_null($object)){
-                $res = null;
-                switch(self::$method){
-                    case self::PUT:
-                        $res = $object->create($_REQUEST);
-                        break;
-                    case self::GET:
-                        $res = $object->retrieve($_REQUEST);
-                        break;
-                    case self::POST:
-                        $res = $object->update($_REQUEST);
-                        break;
-                    case self::DELETE:
-                        $res = $object->delete($_REQUEST);
-                        break;
-                    default:
-                        throw new Alt_Exception("Request method not defined", self::STATUS_ERROR);
-                        break;
-                }
+                if(!method_exists($object, self::$method))
+                    throw new Alt_Exception("Request method not defined", self::STATUS_ERROR);
+
+                $res = $object->{self::$method}($_REQUEST);
 
                 header('Content-type: ' . self::$outputs[self::$output] . self::$output);
                 self::response(array(

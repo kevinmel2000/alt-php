@@ -297,8 +297,8 @@ class Alt_Dbo {
      * @param $string
      * @return mixed
      */
-    public function query($sql){
-        return $this->db->query($this->fieldstring($sql));
+    public function query($sql, $type = "array"){
+        return $this->db->query($this->fieldstring($sql), $type);
     }
 
     /**
@@ -313,7 +313,7 @@ class Alt_Dbo {
         if($returnsql) return $sql;
 
         $res = $this->query($sql);
-        return !empty($res) ? $res[0]->numofrow : 0;
+        return !empty($res) ? $res[0]['numofrow'] : 0;
     }
 
     /**
@@ -385,7 +385,7 @@ class Alt_Dbo {
             }
         }
 
-        return strpos($data['where'], $this->pkey ." = ") !== FALSE ? $res[0] : $res;
+        return $data['where'] != null && strpos($data['where'], $this->pkey ." = ") !== FALSE ? $res[0] : $res;
     }
 
     /**
@@ -396,8 +396,7 @@ class Alt_Dbo {
         // constructing sql
         $sql = "update " . $this->table_name . " set ";
 
-        // imploding field names
-        $data['where'] = $this->pkey . " = " . $this->quote($data[$this->pkey]);
+        $pkey = $data[$this->pkey];
         unset($data[$this->pkey]);
 
         // set field values
@@ -422,7 +421,10 @@ class Alt_Dbo {
         }
 
         // forge sql
-        $sql .= implode(",",$fields) . " where " . ($data['where'] ? $data['where'] : $this->pkey . " = ". $this->quote($data[$this->pkey]));
+        if(count($fields) <= 0)
+            throw new Alt_Exception("No field to update", Alt::STATUS_ERROR);
+
+        $sql .= implode(",",$fields) . ($data['where'] ? " where " . $data['where'] : (isset($pkey) ? " where " . $this->pkey . " = ". $this->quote($pkey) : ""));
 
         // return sql
         if($returnsql) return $sql;
@@ -451,5 +453,22 @@ class Alt_Dbo {
         // execute
         $res = $this->query($sql);
         return $res;
+    }
+
+    public function keyvalues($data, $returnsql = false){
+        $key = $data['key'] ?: $this->pkey;
+        if(isset($data['value'])) $data['select'] = $key . ", " . $data['value'];
+        $tmp = $this->retrieve($data, $returnsql);
+        $ref = array();
+        foreach($tmp as $item){
+            $setvalue = $data['value'] ? $item[$data['value']] : $item;
+
+            if($data['ismulti']){
+                $ref[$item[$key]][] = $setvalue;
+            }else{
+                $ref[$item[$key]] = $setvalue;
+            }
+        }
+        return $ref;
     }
 }
