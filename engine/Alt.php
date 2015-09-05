@@ -101,6 +101,16 @@ class Alt {
                 break;
         }
 
+        // get authorization token
+        if(function_exists('apache_request_headers')){
+            $headers = apache_request_headers();
+            if (isset($headers['Authorization'])) {
+                $matches = array();
+                preg_match('/Token token="(.*)"/', $headers['Authorization'], $matches);
+                if (isset($matches[1])) $_REQUEST['token'] = $matches[1];
+            }
+        }
+
         // set request method
         $_SERVER['REQUEST_METHOD'] = isset(self::$methods[strtolower($_REQUEST['method'])]) ? strtolower($_REQUEST['method']) : $_SERVER['REQUEST_METHOD'];
         self::$method = self::$methods[isset(self::$methods[$_SERVER['REQUEST_METHOD']]) ? $_SERVER['REQUEST_METHOD'] : self::GET];
