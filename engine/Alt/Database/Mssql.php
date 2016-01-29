@@ -50,12 +50,12 @@ class Alt_Database_MsSQL extends Alt_Database_PDO {
 				}
 				
 				// Add ORDER BY clause as an argument for ROW_NUMBER()
-				$sql = "SELECT ROW_NUMBER() OVER ($over) AS Alt_DB_ROWNUM, * FROM ($sql) AS inner_tbl";
+				$sql = "SELECT ROW_NUMBER() OVER ($over) AS DB_ROWNUM, * FROM ($sql) AS inner_tbl";
 			  
 				$start = $offset + 1;
 				$end = $offset + $limit;
 
-				$sql = "WITH outer_tbl AS ($sql) SELECT * FROM outer_tbl WHERE Alt_DB_ROWNUM BETWEEN $start AND $end";
+				$sql = "WITH outer_tbl AS ($sql) SELECT * FROM outer_tbl WHERE DB_ROWNUM BETWEEN $start AND $end";
 			}
 		}
 
@@ -70,12 +70,7 @@ class Alt_Database_MsSQL extends Alt_Database_PDO {
 			$resultTextError = $this->_connection->query( "select * from sys.messages where  language_id=1033 and message_id=".arr::get($errArr, 1, 0) )->fetchAll();
 			
 			// Convert the exception in a Alt_Database exception
-			throw new Alt_Exception('[:code] :error ( :info )', array(
-				':code' => $e->getCode(),
-				':error' => $e->getMessage(),
-				#':query' => $sql,
-				':info' =>  arr::get($resultTextError[0], 'text')
-			), $e->getCode());
+			throw new Alt_Exception('['.$e->getCode().'] '.$e->getMessage());
 		}
 
 		// Set the last query

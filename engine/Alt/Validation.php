@@ -1,8 +1,12 @@
 <?php defined('ALT_PATH') OR die('No direct access allowed.');
 
-class Alt_Validation{
+class Alt_Validation {
     public $rules = array();
     public $messages = array();
+
+    public static function instance(){
+        return new self();
+    }
 
     public function __construct(){
         $this->rules = array();
@@ -31,7 +35,24 @@ class Alt_Validation{
         list($res, $messages) = $this->validate();
 
         if(!$res)
-            throw new Exception(implode("<br/>", $messages), -2);
+            throw new Alt_Exception($messages);
+    }
+
+    /**
+     * Checks if a field is not empty.
+     *
+     * @return  boolean
+     */
+    public static function required($value)
+    {
+        if (is_object($value) AND $value instanceof ArrayObject)
+        {
+            // Get the array from the ArrayObject
+            $value = $value->getArrayCopy();
+        }
+
+        // Value cannot be NULL, FALSE, '', or an empty array
+        return ! in_array($value, array(NULL, FALSE, '', array()), TRUE);
     }
 
     /**
@@ -173,7 +194,7 @@ class Alt_Validation{
      */
     public static function email_domain($email)
     {
-        if ( ! Valid::not_empty($email))
+        if ( ! Alt_Validation::not_empty($email))
             return FALSE; // Empty fields cause issues with checkdnsrr()
 
         // Check if the email domain has a valid MX record
@@ -266,7 +287,7 @@ class Alt_Validation{
      * @param   integer         $number credit card number
      * @param   string|array    $type   card type, or an array of card types
      * @return  boolean
-     * @uses    Valid::luhn
+     * @uses    Alt_Validation::luhn
      */
     public static function credit_card($number, $type = NULL)
     {
@@ -284,7 +305,7 @@ class Alt_Validation{
             foreach ($type as $t)
             {
                 // Test each type for validity
-                if (Valid::credit_card($number, $t))
+                if (Alt_Validation::credit_card($number, $t))
                     return TRUE;
             }
 
@@ -314,7 +335,7 @@ class Alt_Validation{
         if ($cards[$type]['luhn'] == FALSE)
             return TRUE;
 
-        return Valid::luhn($number);
+        return Alt_Validation::luhn($number);
     }
 
     /**

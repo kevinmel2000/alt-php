@@ -2,7 +2,7 @@
 RewriteEngine On
 
 # Installation directory
-RewriteBase /alt/php/
+RewriteBase /alt-php/
 
 # Protect hidden files from being viewed
 <Files .*>
@@ -21,3 +21,5 @@ RewriteRule ^(.*)$ static/$1 [PT,L,QSA]
 RewriteCond %{THE_REQUEST} \s/public/ [NC,OR]
 RewriteCond %{REQUEST_FILENAME} !-f
 RewriteRule ^ index.php?$0 [PT,L,QSA]
+
+php_flag opcache.enable Off

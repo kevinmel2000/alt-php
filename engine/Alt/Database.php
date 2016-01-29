@@ -51,8 +51,7 @@ abstract class Alt_Database {
 
 			if ( ! isset($config['type']))
 			{
-				throw new Alt_Exception('Alt_Database type not defined in :name configuration',
-					array(':name' => $name));
+				throw new Alt_Exception('Alt_Database type not defined in '.$name.' configuration');
 			}
 
 			// Set the driver class name
@@ -406,7 +405,7 @@ abstract class Alt_Database {
 	 *
 	 * Objects passed to this function will be converted to strings.
 	 * [Database_Expression] objects will be compiled.
-	 * [Database_Query] objects will be compiled and converted to a sub-query.
+	 * [Alt_Database_Query] objects will be compiled and converted to a sub-query.
 	 * All other objects will be converted using the `__toString` method.
 	 *
 	 * @param   mixed   $value  any value to quote
@@ -460,7 +459,7 @@ abstract class Alt_Database {
 	 *
 	 * Objects passed to this function will be converted to strings.
 	 * [Database_Expression] objects will be compiled.
-	 * [Database_Query] objects will be compiled and converted to a sub-query.
+	 * [Alt_Database_Query] objects will be compiled and converted to a sub-query.
 	 * All other objects will be converted using the `__toString` method.
 	 *
 	 * @param   mixed   $column  column name or array(column, alias)
@@ -479,7 +478,7 @@ abstract class Alt_Database {
 			$alias = str_replace($this->_identifier, $escaped_identifier, $alias);
 		}
 
-		if ($column instanceof Database_Query)
+		if ($column instanceof Alt_Database_Query)
 		{
 			// Create a sub-query
 			$column = '('.$column->compile($this).')';
@@ -545,7 +544,7 @@ abstract class Alt_Database {
 	 *
 	 * Objects passed to this function will be converted to strings.
 	 * [Database_Expression] objects will be compiled.
-	 * [Database_Query] objects will be compiled and converted to a sub-query.
+	 * [Alt_Database_Query] objects will be compiled and converted to a sub-query.
 	 * All other objects will be converted using the `__toString` method.
 	 *
 	 * @param   mixed   $table  table name or array(table, alias)
@@ -564,7 +563,7 @@ abstract class Alt_Database {
 			$alias = str_replace($this->_identifier, $escaped_identifier, $alias);
 		}
 
-		if ($table instanceof Database_Query)
+		if ($table instanceof Alt_Database_Query)
 		{
 			// Create a sub-query
 			$table = '('.$table->compile($this).')';
@@ -623,7 +622,7 @@ abstract class Alt_Database {
 	 *
 	 * Objects passed to this function will be converted to strings.
 	 * [Database_Expression] objects will be compiled.
-	 * [Database_Query] objects will be compiled and converted to a sub-query.
+	 * [Alt_Database_Query] objects will be compiled and converted to a sub-query.
 	 * All other objects will be converted using the `__toString` method.
 	 *
 	 * @param   mixed   $value  any identifier
@@ -640,7 +639,7 @@ abstract class Alt_Database {
 			$alias = str_replace($this->_identifier, $escaped_identifier, $alias);
 		}
 
-		if ($value instanceof Database_Query)
+		if ($value instanceof Alt_Database_Query)
 		{
 			// Create a sub-query
 			$value = '('.$value->compile($this).')';
@@ -694,4 +693,11 @@ abstract class Alt_Database {
 	 */
 	abstract public function escape($value);
 
+    public function get_instance(){
+        return $this->_instance;
+    }
+
+    public function get_config(){
+        return $this->_config;
+    }
 } // End Database_Connection

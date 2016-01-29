@@ -1,19 +1,35 @@
 <?php defined('ALT_PATH') OR die('No direct access allowed.');
 
+// php5.2 support
+function array_union($array1, $array2){
+    $array1 = is_array($array1) ? $array1 : array();
+    $array2 = is_array($array2) ? $array2 : array();
+    $union = $array1;
+
+    foreach ($array2 as $key => $value) {
+        if (false === array_key_exists($key, $union)) {
+            $union[$key] = $value;
+        }
+    }
+
+    return $union;
+}
+
 class Alt {
     // environment
     const ENV_DEVELOPMENT           = 1;
-    const ENV_TEST                  = 2;
-    const ENV_PRODUCTION            = 3;
-    public static $environment      = self::ENV_DEVELOPMENT;
+    const ENV_PRODUCTION            = 2;
+    public static $environment      = self::ENV_PRODUCTION;
 
     // output type
     const OUTPUT_HTML               = 'html';
     const OUTPUT_JSON               = 'json';
+    const OUTPUT_TEXT               = 'plain';
     const OUTPUT_XML                = 'xml';
     public static $outputs          = array(
         self::OUTPUT_JSON           => 'application/',
         self::OUTPUT_XML            => 'application/',
+        self::OUTPUT_TEXT           => 'text/',
         self::OUTPUT_HTML           => 'text/',
     );
     public static $output           = self::OUTPUT_JSON;
@@ -58,17 +74,22 @@ class Alt {
      * @param array $options
      */
     public static function start($options = array()){
+        session_start();
+
         // set timestart
         self::$timestart = $_SERVER['REQUEST_TIME_FLOAT'];
 
+        // read config
+        self::$config = $options['config'] ? $options['config'] : (include_once ALT_PATH . 'config.php');
+
         // set environment
-        self::$environment = $options['environment'] ?: self::ENV_DEVELOPMENT;
+        self::$environment = $options['environment'] ? $options['environment'] : (self::$config['app']['environment'] ? (strtolower(self::$config['app']['environment']) == 'development' ? self::ENV_DEVELOPMENT : self::ENV_PRODUCTION) : self::$environment);
+
+        // set log level
+        Alt_Log::$level = $options['loglevel'] ? $options['loglevel'] : (self::$config['app']['loglevel'] ? self::$config['app']['loglevel'] : (self::$environment == self::ENV_PRODUCTION ? Alt_Log::LEVEL_ERROR : Alt_Log::LEVEL_LOG));
 
         // set default output
-        self::$output = $options['output'] ?: self::OUTPUT_JSON;
-
-        // read config
-        self::$config = $options['config'] ?: (include_once ALT_PATH . 'config.php');
+        self::$output = $options['output'] ? $options['output'] : self::$output;
 
         // can be used as a web app or command line
         switch(PHP_SAPI){
@@ -94,7 +115,7 @@ class Alt {
                         $_REQUEST[$key] = $value;
                     }
                 }
-                $_SERVER['REQUEST_URI'] = $_SERVER['REQUEST_URI'] ?: "";
+                $_SERVER['REQUEST_URI'] = $_SERVER['REQUEST_URI'] ? $_SERVER['REQUEST_URI'] : "";
                 break;
             default:
                 list($baseurl) = explode('index.php', $_SERVER['PHP_SELF']);
@@ -116,10 +137,10 @@ class Alt {
         self::$method = self::$methods[isset(self::$methods[$_SERVER['REQUEST_METHOD']]) ? $_SERVER['REQUEST_METHOD'] : self::GET];
 
         // get routing and output type
-        $uri = substr($_SERVER['REQUEST_URI'], strlen($baseurl)) ?: "";
+        $uri = substr($_SERVER['REQUEST_URI'], strlen($baseurl)) ? substr($_SERVER['REQUEST_URI'], strlen($baseurl)) : "";
         list($route) = explode('?', $uri);
         list($routing, $ext) = explode(".", $route);
-        $routing = $routing ?: 'index';
+        $routing = $routing ? $routing : 'index';
         $routing = str_replace('/', DIRECTORY_SEPARATOR, $routing);
 
         if(isset(self::$outputs[$ext])) self::$output = $ext;
@@ -133,76 +154,31 @@ class Alt {
         header('Access-Control-Allow-Headers: *');
 
         try{
-            // try find in available routes first
-            $object = null;
-            $tmp = explode("?", $routing);
-            $tmp = explode(DIRECTORY_SEPARATOR, $tmp[0]);
+            // try get file in route folder
+            $controller = ALT_PATH . 'route' . DIRECTORY_SEPARATOR . $routing . '.php';
+            if(!is_file($controller)) throw new Alt_Exception("Request not found", self::STATUS_NOTFOUND);
 
-            foreach(self::$routes as $route => $config){
-                if($tmp[0] == $route){
-                    $object = new $config['classname'];
-                    if(isset($tmp[1])){
-                        if(intval($tmp[1]) > 0){
-                            $_REQUEST[$object->pkey] = $tmp[1];
-                        }else{
-                            self::$method = $tmp[1];
+            ob_start();
+            $res = (include_once $controller);
 
-                            if(isset($config['method']) && !in_array(self::$method, $config['method']))
-                                throw new Alt_Exception("Request method not defined", self::STATUS_ERROR);
-                        }
+            switch(self::$output){
+                case self::OUTPUT_HTML:
+                default:
+                    $res = ob_get_contents() ? ob_get_contents() : $res;
+                    ob_end_clean();
 
-                    }
+                    self::response(array(
+                        's' => self::STATUS_OK,
+                        'd' => $res,
+                    ));
                     break;
-                }
-            }
-
-            if(!is_null($object)){
-                if(!method_exists($object, self::$method))
-                    throw new Alt_Exception("Request method not defined", self::STATUS_ERROR);
-
-                $res = $object->{self::$method}($_REQUEST);
-
-                header('Content-type: ' . self::$outputs[self::$output] . self::$output);
-                self::response(array(
-                    's' => self::STATUS_OK,
-                    'd' => $res,
-                ));
-            }else{
-                // if no available routes defined, try get file in route folder
-                $controller = ALT_PATH . 'route' . DIRECTORY_SEPARATOR . $routing . '.php';
-                if(!is_file($controller)) throw new Alt_Exception("Request not found", self::STATUS_NOTFOUND);
-
-                ob_start();
-                $res = (include_once $controller);
-
-                header('Content-type: ' . self::$outputs[self::$output] . self::$output);
-                switch(self::$output){
-                    case self::OUTPUT_HTML:
-                        $res = ob_get_contents() ?: $res;
-                        ob_end_clean();
-
-                        self::response(array(
-                            's' => self::STATUS_OK,
-                            'd' => $res,
-                        ));
-                        break;
-                    default:
-                        ob_end_clean();
-                        self::response(array(
-                            's' => self::STATUS_OK,
-                            'd' => $res,
-                        ));
-                        break;
-                }
             }
         }catch(Alt_Exception $e){
-            header('Content-type: ' . self::$outputs[self::$output] . self::$output);
             self::response(array(
                 's' => $e->getCode(),
                 'm' => $e->getMessage(),
             ));
         }catch(Exception $e){
-            header('Content-type: ' . self::$outputs[self::$output] . self::$output);
             self::response(array(
                 's' => self::STATUS_ERROR,
                 'm' => self::$environment == Alt::ENV_DEVELOPMENT ? $e->getCode() . " : " . $e->getMessage() : self::$status[self::STATUS_ERROR],
@@ -244,6 +220,8 @@ class Alt {
     }
 
     public static function response($output = array(), $options = array()){
+        header('Content-type: ' . self::$outputs[self::$output] . self::$output);
+
         // flag is always surpress http status to 200
         $options['issurpress']  = isset($options['issurpress']) ? $options['issurpress'] : (isset($_REQUEST['issurpress']) ? $_REQUEST['issurpress'] : false);
 
@@ -260,17 +238,44 @@ class Alt {
             case self::OUTPUT_JSON:
             default:
                 $output = $options['ismini'] && $output['s'] == self::STATUS_OK ? $output['d'] : $output;
-                echo json_encode($output);
+                $output = json_encode($output);
+
+                if(Alt::$environment == Alt::ENV_PRODUCTION)
+                    $output = Alt_Security::encrypt($output, Alt::$config['security']);
+
+                header('Content-length: ' . strlen($output));
+                echo $output;
+                break;
+            case self::OUTPUT_TEXT:
+                $output = $options['ismini'] && $output['s'] == self::STATUS_OK ? $output['d'] : $output;
+
+                if(Alt::$environment == Alt::ENV_PRODUCTION)
+                    $output = Alt_Security::encrypt($output, Alt::$config['security']);
+
+                header('Content-length: ' . strlen($output));
+                echo $output;
                 break;
             case self::OUTPUT_XML:
-                $output = $options['ismini'] && $output['s'] == self::STATUS_OK ? $output['d'] : $output;
-                echo '<?xml version="1.0" encoding="UTF-8"?>';
-                echo '<xml>';
-                echo self::xml_encode($output);
-                echo '</xml>';
+                $text = $options['ismini'] && $output['s'] == self::STATUS_OK ? $output['d'] : $output;
+                $output  = '<?xml version="1.0" encoding="UTF-8"?>';
+                $output .= '<xml>';
+                $output .= self::xml_encode($text);
+                $output .= '</xml>';
+
+                if(Alt::$environment == Alt::ENV_PRODUCTION)
+                    $output = Alt_Security::encrypt($output, Alt::$config['security']);
+
+                header('Content-length: ' . strlen($output));
+                echo $output;
                 break;
             case self::OUTPUT_HTML:
-                echo $output['d'];
+                $output = $output['s'] == Alt::STATUS_OK ? $output['d'] : $output['m'];
+
+                if(Alt::$environment == Alt::ENV_PRODUCTION)
+                    $output = Alt_Security::encrypt($output, Alt::$config['security']);
+
+                header('Content-length: ' . strlen($output));
+                echo $output;
                 break;
         }
     }
@@ -280,7 +285,9 @@ class Alt {
         switch(gettype($data)){
             case 'string':
             case 'number':
+            case 'integer':
             case 'double':
+            default:
                 $str .= $data;
                 break;
             case 'array':
@@ -293,27 +300,5 @@ class Alt {
                 break;
         }
         return $str;
-    }
-
-    public static function generate_token($data){
-        if(isset($data) && $data){
-            $session = self::$config['session'];
-            $data->exp = time() + $session['native']['lifetime'];
-            $data->sessionid = md5(microtime());
-
-            return Alt_Jwt::encode($data, self::$config['app_name']);
-        }else{
-            return '';
-        }
-    }
-
-    public static function get_user_data($token = ''){
-        try{
-            $token = $token ?: $_REQUEST['token'];
-            $userdata = Alt_Jwt::decode($token, self::$config['app_name']);
-            return $userdata;
-        }catch (Exception $e){
-            return new stdClass();
-        }
     }
 }

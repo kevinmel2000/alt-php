@@ -26,14 +26,21 @@ class Alt_Dbo {
     // view dynamic fields data
     protected $view_dynfields = array();
 
+    public static function instance($db_instance = null){
+        $classname = get_called_class();
+        $self = new $classname();
+        if($db_instance) $self->reinstance($db_instance);
+        return $self;
+    }
+
     /**
      * Constructing class
      * @return void
      */
     public function __construct() {
-        $this->table_name   = $this->table_name ?: get_class($this);
-        $this->pkey         = $this->pkey ?: $this->table_name ."id";
-        $this->db           = $this->db ?: Alt_Db::instance($this->db_instance);
+        $this->table_name   = $this->table_name ? $this->table_name : get_class($this);
+        $this->pkey         = $this->pkey ? $this->pkey : $this->table_name ."id";
+        $this->db           = Alt_Db::instance($this->db_instance);
     }
 
     /**
@@ -155,7 +162,7 @@ class Alt_Dbo {
      * @return array
      */
     protected function get_fields($returnview = true){
-        return $returnview && isset($this->view_fields) ? $this->view_fields : $this->table_fields;
+        return $returnview && isset($this->view_name) ? $this->view_fields : $this->table_fields;
     }
 
     /**
@@ -199,14 +206,28 @@ class Alt_Dbo {
         $where = array();
 
         if($data['where'] != null && $data['where'] != ''){
-            $data['where'] = $this->field($data['where']);
-            $where[] = $data['where'];
+            if(gettype($data['where']) == "array"){
+                $where = $data['where'];
+            }else{
+                $data['where'] = $this->field($data['where']);
+                $where[] = $data['where'];
+            }
         }
 
         foreach($data as $key => $value){
-            if($this->table_fields[$key] !== null && $value != ''){
-                $where[] = $this->field($key) . " like " . $this->quote("%" . $value . "%");
-            }else if($this->table_dynfields[$key] !== null && $value != ''){
+            $values = array();
+            if(gettype($value) == "string" && $value != ""){
+                $tmp = explode(" ", $value);
+                if(in_array(trim($tmp[0]), array("like", "=", "<", ">", "<=", ">=", "in", "not"))){
+                    $values = array($value);
+                }else{
+                    $values = array("like", "%" . $value . "%");
+                }
+            }
+
+            if($this->table_fields[$key] !== null || $this->view_fields[$key] !== null){
+                $where[] = $this->field($key) . " " . $values[0] . (count($values) > 1 ? " " . $this->quote($values[1]) : "");
+            }else if($this->table_dynfields[$key] !== null){
                 $tmp = $this->filter($key, $value);
                 foreach($tmp as $k=>$v) {
                     $where[] = $this->field($k) . " like " . $this->quote("%" . $v . "%");
@@ -214,7 +235,8 @@ class Alt_Dbo {
             }
         }
 
-        if($this->table_fields['isdeleted'] !== null && $this->view_fields['isdeleted'] !== null && ($data['isdeleted'] == null || $data['isdeleted'] == '')){
+        $fields = $this->get_fields();
+        if($fields['isdeleted'] !== null && ($data['isdeleted'] == null || $data['isdeleted'] == '')){
             $where[] = 'isdeleted = 0';
         }
 
@@ -249,7 +271,7 @@ class Alt_Dbo {
      */
     protected function get_limit($data = array()) {
         if($data['limit'] != null && $data['limit'] != ''){
-            return " LIMIT " . $data['limit'] . " OFFSET " . ($data['offset'] ?: 0);
+            return " limit " . $data['limit'] . " offset " . ($data['offset'] ? $data['offset'] : 0);
         }
         return "";
     }
@@ -266,20 +288,11 @@ class Alt_Dbo {
     }
 
     /**
-     * Create instance of this class
-     * @return Alt_Dbo
-     */
-    public static function instance() {
-        $classname = get_called_class();
-        return new $classname();
-    }
-
-    /**
      * @param  $instance_name
      * @return Alt_Dbo
      */
-    public function reinstance($instance_name) {
-        $this->db = Alt_Db::instance($instance_name);
+    public function reinstance($instance_name = null) {
+        $this->db = Alt_Db::instance($instance_name ? $instance_name : $this->db_instance);
         return $this;
     }
 
@@ -309,7 +322,7 @@ class Alt_Dbo {
      */
     public function count($data = array(), $returnsql = false) {
         // sql query
-        $sql = "select count(*) as numofrow from " . ($this->view_name ?: $this->table_name) . $this->get_where($data);
+        $sql = "select count(*) as numofrow from " . ($this->view_name ? $this->view_name : $this->table_name) . $this->get_where($data);
         if($returnsql) return $sql;
 
         $res = $this->query($sql);
@@ -321,7 +334,7 @@ class Alt_Dbo {
      * @param usedefault bool set true if you want to use default value for empty table_fields set by DBO
      * @return int inserted row
      */
-    public function create($data, $returnsql = false) {
+    public function insert($data, $returnsql = false) {
         // constructing sql
         $sql = "insert into " . $this->table_name . " (";
 
@@ -331,6 +344,13 @@ class Alt_Dbo {
 
         // set field values
         $fields = $this->get_fields(false);
+
+        // add entry time and entry user if exist
+        $userdata = System_Auth::get_user_data();
+        if($fields['entrytime'] !== null)   $data['entrytime'] = $data['entrytime'] != '' ? $data['entrytime'] : time();
+        if($fields['entryuser'] !== null)   $data['entryuser'] = $data['entryuser'] != '' ? $data['entryuser'] : $userdata['username'];
+
+        // set fields and values to insert
         $fnames = array();
         $values = array();
         foreach ($data as $field => $value) if(isset($fields[$field])) {
@@ -364,13 +384,13 @@ class Alt_Dbo {
      * Gets data from database
      * @return array of data
      */
-    public function retrieve($data = array(), $returnsql = false) {
+    public function get($data = array(), $returnsql = false) {
         if(isset($data[$this->pkey])){
             $data['where'] = $this->pkey ." = ". $this->quote($data[$this->pkey]);
             unset($data[$this->pkey]);
         }
 
-        $sql = "SELECT ".$this->get_select($data)." FROM ".$this->get_tablename() . $this->get_where($data).$this->get_group($data).$this->get_order($data).$this->get_join($data).$this->get_limit($data);
+        $sql = "select ".$this->get_select($data)." from ".$this->get_tablename() . $this->get_where($data).$this->get_group($data).$this->get_order($data).$this->get_join($data).$this->get_limit($data);
         if($returnsql) return $sql;
 
         // returning data
@@ -379,13 +399,22 @@ class Alt_Dbo {
             for ($i = 0; $i < count($data); $i++) {
                 unset($res[$i]->{$this->table_dyncolumn});
                 foreach ($res[$i] as $key => $value) {
+                    $key = strtolower($key);
                     $decoded = json_decode($value);
                     $res[$i]->$key = $decoded !== NULL && (gettype($decoded) == 'array' || gettype($decoded) == 'object') ? json_decode($value) : $value;
                 }
             }
         }
 
-        return $data['where'] != null && strpos($data['where'], $this->pkey ." = ") !== FALSE ? $res[0] : $res;
+        return $res;
+    }
+
+    public function retrieve($data = array(), $returnsql = false){
+        $res = $this->get($data, $returnsql);
+
+        if($returnsql) return $res;
+        if(count($res) < 0) throw new Alt_Exception("Data tidak ditemukan!");
+        return $res[0];
     }
 
     /**
@@ -401,6 +430,13 @@ class Alt_Dbo {
 
         // set field values
         $table_fields = $this->get_fields(false);
+
+        // add modified time and modified user if exist
+        $userdata = System_Auth::get_user_data();
+        if($table_fields['modifiedtime'] !== null)   $data['modifiedtime'] = $data['modifiedtime'] != '' ? $data['modifiedtime'] : time();
+        if($table_fields['modifieduser'] !== null)   $data['modifieduser'] = $data['modifieduser'] != '' ? $data['modifieduser'] : $userdata['username'];
+
+        // set fields and values to update
         $fields = array();
         foreach ($data as $field => $value) if(isset($table_fields[$field])) {
             $fields[] = $field." = ".$this->quote($value);
@@ -422,7 +458,7 @@ class Alt_Dbo {
 
         // forge sql
         if(count($fields) <= 0)
-            throw new Alt_Exception("No field to update", Alt::STATUS_ERROR);
+            throw new Alt_Exception("No field to update");
 
         $sql .= implode(",",$fields) . ($data['where'] ? " where " . $data['where'] : (isset($pkey) ? " where " . $this->pkey . " = ". $this->quote($pkey) : ""));
 
@@ -446,6 +482,17 @@ class Alt_Dbo {
             return -1;
         }
 
+        // add modified time and modified user if exist
+        $fields = $this->get_fields(false);
+        if($fields['isdeleted'] !== null){
+            $userdata = System_Auth::get_user_data();
+            if($fields['deletedtime'] !== null)    $data['deletedtime'] = $data['deletedtime'] != '' ? $data['deletedtime'] : time();
+            if($fields['deleteduser'] !== null)    $data['deleteduser'] = $data['deleteduser'] != '' ? $data['deleteduser'] : $userdata['username'];
+            if($fields['isdeleted'] !== null)       $data['isdeleted'] = 1;
+
+            return $this->update($data, $returnsql);
+        }
+
         // return sql
         $sql = "delete from " . $this->table_name . $this->get_where($data);
         if($returnsql) return $sql;
@@ -456,12 +503,15 @@ class Alt_Dbo {
     }
 
     public function keyvalues($data, $returnsql = false){
-        $key = $data['key'] ?: $this->pkey;
-        if(isset($data['value'])) $data['select'] = $key . ", " . $data['value'];
-        $tmp = $this->retrieve($data, $returnsql);
+        $key = $data['key'] ? $data['key'] : $this->pkey;
+        if(isset($data['value'])) $data['select'] = $key . ", " . $data['values'];
+        $tmp = $this->get($data, $returnsql);
+
+        if($returnsql) return $tmp;
+
         $ref = array();
         foreach($tmp as $item){
-            $setvalue = $data['value'] ? $item[$data['value']] : $item;
+            $setvalue = $data['values'] ? $item[$data['values']] : $item;
 
             if($data['ismulti']){
                 $ref[$item[$key]][] = $setvalue;

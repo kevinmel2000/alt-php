@@ -8,7 +8,7 @@
  * @copyright  (c) 2008-2009 Alt Team
  * @license    http://Altphp.com/license
  */
-class Alt_Database_PDO extends Alt_Database {
+class Alt_Database_Pdo extends Alt_Database {
 
 	// PDO uses no quoting for identifiers
 	protected $_identifier = '';
@@ -30,12 +30,12 @@ class Alt_Database_PDO extends Alt_Database {
 			return;
 
 		// Extract the connection parameters, adding required variabels
-		extract($this->_config['connection'] + array(
+		extract(array_union($this->_config['connection'], array(
 			'dsn'        => '',
 			'username'   => NULL,
 			'password'   => NULL,
 			'persistent' => FALSE,
-		));
+		)));
 
 		// Clear the connection parameters for security
 		unset($this->_config['connection']);
@@ -56,9 +56,7 @@ class Alt_Database_PDO extends Alt_Database {
 		}
 		catch (PDOException $e)
 		{
-			throw new Alt_Exception(':error',
-				array(':error' => $e->getMessage()),
-				$e->getCode());
+			throw new Alt_Exception($e->getMessage());
 		}
 	}
 
@@ -136,12 +134,7 @@ class Alt_Database_PDO extends Alt_Database {
 		catch (Exception $e)
 		{
 			// Convert the exception in a Alt_Database exception
-			throw new Alt_Exception(':error [ :query ]',
-				array(
-					':error' => $e->getMessage(),
-					':query' => $sql
-				),
-				$e->getCode());
+			throw new Alt_Exception($e->getMessage().' [ '.$sql.' ]');
 		}
 
 		// Set the last query
@@ -209,14 +202,12 @@ class Alt_Database_PDO extends Alt_Database {
 
 	public function list_tables($like = NULL)
 	{
-		throw new Alt_Exception('Alt_Database method :method is not supported by :class',
-			array(':method' => __FUNCTION__, ':class' => __CLASS__));
+		throw new Alt_Exception('Alt_Database method '.__FUNCTION__.' is not supported by '.__CLASS__);
 	}
 
 	public function list_columns($table, $like = NULL, $add_prefix = TRUE)
 	{
-		throw new Alt_Exception('Alt_Database method :method is not supported by :class',
-			array(':method' => __FUNCTION__, ':class' => __CLASS__));
+        throw new Alt_Exception('Alt_Database method '.__FUNCTION__.' is not supported by '.__CLASS__);
 	}
 
 	public function escape($value)

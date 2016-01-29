@@ -36,19 +36,19 @@ class Alt_Database_Mysql extends Alt_Database {
 		}
 
 		// Extract the connection parameters, adding required variabels
-		extract($this->_config['connection'] + array(
+		extract(array_union($this->_config['connection'], array(
 			'database'   => '',
 			'hostname'   => '',
 			'username'   => '',
 			'password'   => '',
             'port'       => 3306,
 			'persistent' => FALSE,
-		));
+		)));
 
 		// Prevent this information from showing up in traces
 		unset($this->_config['connection']['username'], $this->_config['connection']['password']);
 
-		try
+        try
 		{
 			if ($persistent)
 			{
@@ -60,15 +60,14 @@ class Alt_Database_Mysql extends Alt_Database {
 				// Create a connection and force it to be a new link
 				$this->_connection = mysqli_connect($hostname, $username, $password, null, $port);
 			}
+            if(!$this->_connection) throw new Alt_Exception(mysqli_connect_error());
 		}
 		catch (Exception $e)
 		{
 			// No connection exists
 			$this->_connection = NULL;
 
-			throw new Alt_Exception(':error',
-				array(':error' => $e->getMessage()),
-				$e->getCode());
+			throw new Alt_Exception($e->getMessage());
 		}
 
 		// \xFF is a better delimiter, but the PHP driver uses underscore
@@ -107,9 +106,7 @@ class Alt_Database_Mysql extends Alt_Database {
 		if ( ! mysqli_select_db($this->_connection, $database))
 		{
 			// Unable to select Alt_Database
-			throw new Alt_Exception(':error',
-				array(':error' => mysqli_error($this->_connection)),
-				mysqli_errno($this->_connection));
+			throw new Alt_Exception(mysqli_error($this->_connection));
 		}
 
 		Alt_Database_Mysql::$_current_databases[$this->_connection_id] = $database;
@@ -161,9 +158,7 @@ class Alt_Database_Mysql extends Alt_Database {
 
 		if ($status === FALSE)
 		{
-			throw new Alt_Exception(':error',
-				array(':error' => mysqli_error($this->_connection)),
-				mysqli_errno($this->_connection));
+			throw new Alt_Exception(mysqli_error($this->_connection));
 		}
 	}
 
@@ -182,9 +177,7 @@ class Alt_Database_Mysql extends Alt_Database {
 		if (($result = mysqli_query($this->_connection, $sql)) === FALSE)
 		{
 
-			throw new Alt_Exception(':error [ :query ]',
-				array(':error' => mysqli_error($this->_connection), ':query' => $sql),
-				mysqli_errno($this->_connection));
+			throw new Alt_Exception(mysqli_error($this->_connection).'['.$sql.']');
 		}
 
 		// Set the last query
@@ -273,9 +266,7 @@ class Alt_Database_Mysql extends Alt_Database {
 
 		if ($mode AND ! mysqli_query($this->_connection, "SET TRANSACTION ISOLATION LEVEL $mode"))
 		{
-			throw new Alt_Exception(':error',
-				array(':error' => mysqli_error($this->_connection)),
-				mysqli_errno($this->_connection));
+			throw new Alt_Exception(mysqli_error($this->_connection));
 		}
 
 		return (bool) mysqli_query($this->_connection, 'START TRANSACTION');
@@ -418,9 +409,7 @@ class Alt_Database_Mysql extends Alt_Database {
 
 		if (($value = mysqli_real_escape_string($this->_connection, (string) $value)) === FALSE)
 		{
-			throw new Alt_Exception(':error',
-				array(':error' => mysqli_error($this->_connection)),
-				mysqli_errno($this->_connection));
+			throw new Alt_Exception(mysqli_error($this->_connection));
 		}
 
 		// SQL standard is to use single-quotes for all values
