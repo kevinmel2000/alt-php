@@ -24,12 +24,10 @@ class Alt {
     // output type
     const OUTPUT_HTML               = 'html';
     const OUTPUT_JSON               = 'json';
-    const OUTPUT_TEXT               = 'plain';
     const OUTPUT_XML                = 'xml';
     public static $outputs          = array(
         self::OUTPUT_JSON           => 'application/',
         self::OUTPUT_XML            => 'application/',
-        self::OUTPUT_TEXT           => 'text/',
         self::OUTPUT_HTML           => 'text/',
     );
     public static $output           = self::OUTPUT_JSON;
@@ -69,6 +67,9 @@ class Alt {
     public static $timestop         = 0;
     public static $config           = array();
 
+    // security
+    public static $secure           = true;
+
     /**
      * Start Alt application
      * @param array $options
@@ -89,7 +90,10 @@ class Alt {
         Alt_Log::$level = $options['loglevel'] ? $options['loglevel'] : (self::$config['app']['loglevel'] ? self::$config['app']['loglevel'] : (self::$environment == self::ENV_PRODUCTION ? Alt_Log::LEVEL_ERROR : Alt_Log::LEVEL_LOG));
 
         // set default output
-        self::$output = $options['output'] ? $options['output'] : self::$output;
+        self::$output = $options['output'] ? $options['output'] : (self::$config['app']['output'] ? self::$config['app']['output'] : self::$output);
+
+        // set security
+        self::$secure = isset(self::$config['security']);
 
         // can be used as a web app or command line
         switch(PHP_SAPI){
@@ -240,16 +244,7 @@ class Alt {
                 $output = $options['ismini'] && $output['s'] == self::STATUS_OK ? $output['d'] : $output;
                 $output = json_encode($output);
 
-                if(Alt::$environment == Alt::ENV_PRODUCTION)
-                    $output = Alt_Security::encrypt($output, Alt::$config['security']);
-
-                header('Content-length: ' . strlen($output));
-                echo $output;
-                break;
-            case self::OUTPUT_TEXT:
-                $output = $options['ismini'] && $output['s'] == self::STATUS_OK ? $output['d'] : $output;
-
-                if(Alt::$environment == Alt::ENV_PRODUCTION)
+                if(Alt::$environment == Alt::ENV_PRODUCTION && Alt::$secure)
                     $output = Alt_Security::encrypt($output, Alt::$config['security']);
 
                 header('Content-length: ' . strlen($output));
@@ -262,7 +257,7 @@ class Alt {
                 $output .= self::xml_encode($text);
                 $output .= '</xml>';
 
-                if(Alt::$environment == Alt::ENV_PRODUCTION)
+                if(Alt::$environment == Alt::ENV_PRODUCTION && Alt::$secure)
                     $output = Alt_Security::encrypt($output, Alt::$config['security']);
 
                 header('Content-length: ' . strlen($output));
@@ -271,7 +266,7 @@ class Alt {
             case self::OUTPUT_HTML:
                 $output = $output['s'] == Alt::STATUS_OK ? $output['d'] : $output['m'];
 
-                if(Alt::$environment == Alt::ENV_PRODUCTION)
+                if(Alt::$environment == Alt::ENV_PRODUCTION && Alt::$secure)
                     $output = Alt_Security::encrypt($output, Alt::$config['security']);
 
                 header('Content-length: ' . strlen($output));

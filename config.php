@@ -2,18 +2,20 @@
 
 return array (
     'app' => array(
-        'id' => '',
-        'name' => 'alt',
+        'id' => 'alt-php',
+        'name' => 'Alt PHP Framework',
+        'output' => 'html',
     ),
     'session' => array(
         'lifetime' => 43200,
     ),
-    'security' => array(
-        'algorithm' => MCRYPT_RIJNDAEL_256,
+    /*'security' => array(
+        'algorithm' => MCRYPT_RIJNDAEL_128,
         'mode' => MCRYPT_MODE_CBC,
-        'key' => 'tes',
-    ),
-    'database' => array(
+        'key' => 'u/Gu5posvwDsXUnV',
+        'iv' => '5D9r9ZVzEYYgha93',
+    ),*/
+    /*'database' => array(
         'default' => array (
             'type'       => 'Mysql',
             'connection' => array(
@@ -24,5 +26,5 @@ return array (
                 'database'   => 'alt-php',
             )
         ),
-    ),
+    ),*/
 );
